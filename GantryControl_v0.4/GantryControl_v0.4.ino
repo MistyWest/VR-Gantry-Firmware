@@ -1,6 +1,6 @@
 /* Gantry Control v0.4
  *  
- * Control stepper motors through serial commands.
+ * Control stepper motors through serial commands. Improved speed performance of serial communication.
  * 
  * Last edited: August 24, 2016
  * Author: Justin Lam
@@ -18,7 +18,6 @@
 #define STEP_NUM 0.5 // 1/2 step    
 #define STEP_SIZE 1.8 // degrees
 #define PULLEY_RADIUS 0.009 // radius in m <- THIS DETERMINES THE DISTANCE OF MEASURE
-#define STATUS_DELAY 5
 
 // Define steppers and the pins they will use
 AccelStepper stepper1(AccelStepper::DRIVER, X_STEP_PIN, X_DIR_PIN);  // type, step pin, direction pin
@@ -75,8 +74,6 @@ uint8_t i = 0;
 boolean new_cmd = false;
 
 void loop() {
-  currentMillis = millis();
-
   if(Serial.available() > 0) {
     while(Serial.available() > 0) {
       rcv_buff[i] = Serial.read();
@@ -91,28 +88,9 @@ void loop() {
   }
   
   // Check if complete serial command was received
-//  if (stringComplete) {
-//    
-//    if (inputX == "go") { 
-//      runSteppers = true;
-//    } 
-//    else if (inputX == "s") {
-//      stepper1.stop();
-//      stepper2.stop();
-//      runSteppers = false;
-//    } 
-//    else {
-      dX = inputX.toFloat();
-      dY = inputY.toFloat();
-      moveSteppers(dX, dY);
-//    }
-    dX = inputX.toFloat();
-    dY = inputY.toFloat();
-    moveSteppers(dX, dY);
-    
-    inputX = "";
-    inputY = "";
-    stringComplete = false;
+  if (new_cmd) {
+    moveSteppers(cmd_rcv.pos_x, cmd_rcv.pos_y);
+    new_cmd = false;
   }
  
   updateStatus();
@@ -131,16 +109,13 @@ boolean moveSteppers(float dX, float dY) {
   float dB = dX - dY;
 
   if (stepper1.distanceToGo() == 0) {
-    stepper1_fin = true;
-    
+    stepper1_fin = true; 
   }
   if (stepper2.distanceToGo() == 0) {
     stepper2_fin = true;
-    
   }
 
   if (stepper1_fin && stepper2_fin) {
-//    delay(250);
     stepper1.move(dA);
     stepper2.move(dB);
     stepper1_fin = false;
@@ -153,44 +128,6 @@ boolean moveSteppers(float dX, float dY) {
 
 void updateStatus() {
   if (!stepper1.isRunning() && !stepper2.isRunning()) {
-      if ((currentMillis - previousMillis) >= STATUS_DELAY) {
-        Serial.write("ready");
-        previousMillis = currentMillis;
-      }
+      Serial.write("ready");
     }
 }
-
-/*
-  SerialEvent occurs whenever a new data comes in the
- hardware serial RX.  This routine is run between each
- time loop() runs, so using delay inside loop can delay
- response.  Multiple bytes of data may be available.
- */
-//void serialEvent() {
-//  while (Serial.available()) {
-//    // get the new byte:
-//    inChar = Serial.read();
-//
-//    if (inChar == ',') {
-//      inputX += '\0';
-//      readNextVal = true;
-//    }
-//
-//    // if the incoming character is a newline, set a flag
-//    // so the main loop can do something about it:
-//    if (inChar == escapeChar) {
-//      inputY += '\0';
-//      inputY.remove(0,1);
-//      stringComplete = true;
-//      readNextVal = false;
-//      break;
-//    }
-//    
-//    if (readNextVal)
-//    {
-//      inputY += inChar;
-//    } else {
-//      inputX += inChar;
-//    }
-//  }
-//}
