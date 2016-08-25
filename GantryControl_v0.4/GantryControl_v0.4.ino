@@ -130,10 +130,10 @@ void loop() {
           mode = 0;
           i = 0;
           UnStuffData( rcv_buff, 11, (uint8_t *)(&cmd_rcv));
-          local_check_sum = Fletcher16( rcv_buff, 8);
+          local_check_sum = Fletcher16( (uint8_t *)(&cmd_rcv), 8);
           Serial.print(local_check_sum);
           
-//          if(cmd_rcv.check_sum == local_check_sum)
+          if(cmd_rcv.check_sum == local_check_sum)
             new_cmd = true;
           }
           break;
