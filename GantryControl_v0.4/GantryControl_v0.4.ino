@@ -8,8 +8,8 @@
 
 #include <AccelStepper.h>
 
-#define MAX_SPEED 2200 // 1200
-#define MAX_ACCEL 2000 // 2000
+#define MAX_SPEED 1800 // 1200
+#define MAX_ACCEL 5000 // 2000
 #define BUFFER_SIZE 20
 #define X_STEP_PIN 2
 #define X_DIR_PIN 3
