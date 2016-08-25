@@ -44,9 +44,44 @@ float pos;
 typedef struct CMD_RCV_S {
   float pos_x;
   float pos_y;
+  uint16_t check_sum;
 } cmd_rcv_t;
 
 cmd_rcv_t cmd_rcv;
+
+uint16_t Fletcher16(uint8_t *data, int count)
+{
+  uint16_t sum1 = 0;
+  uint16_t sum2 = 0;
+  int index;
+   
+  for (index = 0; index < count; ++index) {
+    sum1 = (sum1 + data[index]) % 255;
+    sum2 = (sum2 + sum1) % 255;
+  }
+   
+  return (sum2 << 8) | sum1;
+}
+
+/*
+* UnStuffData decodes "length" bytes of
+* data at the location pointed to by "ptr",
+* writing the output to the location pointed
+* to by "dst".
+*/
+
+void UnStuffData(const uint8_t *ptr, unsigned long length, uint8_t *dst)
+{
+  const uint8_t *end = ptr + length;
+  while (ptr < end)
+  {
+    int i, code = *ptr++;
+    for (i = 1; i<code; i++)
+      *dst++ = *ptr++;
+    if (code < 0xFF)
+      *dst++ = 0;
+  }
+}
 
 void setup() {
   pinMode(X_STEP_PIN, OUTPUT);
@@ -69,20 +104,39 @@ void setup() {
   Serial.begin(115200);
 }
 
-uint8_t rcv_buff[8];
+uint8_t rcv_buff[12];
 uint8_t i = 0;
 boolean new_cmd = false;
-
+float dX_prev = 0;
+float dY_prev = 0;
+bool changeDir_x = false;
+bool changeDir_y = false;
+uint16_t local_check_sum = 0;
+uint8_t mode = 0;
 void loop() {
+
   if(Serial.available() > 0) {
     while(Serial.available() > 0) {
-      rcv_buff[i] = Serial.read();
-      i++;
-
-      if(i == 8) {
-        i = 0;
-        memcpy( &cmd_rcv, rcv_buff, 8);
-        new_cmd = true;
+      switch(mode) {
+       case 0:
+        if(Serial.read() == 0x00)
+          mode = 1;
+        break;
+        
+       case 1:
+        rcv_buff[i] = Serial.read();
+        i++;
+        if(i == 11) {
+          mode = 0;
+          i = 0;
+          UnStuffData( rcv_buff, 11, (uint8_t *)(&cmd_rcv));
+          local_check_sum = Fletcher16( rcv_buff, 8);
+          Serial.print(local_check_sum);
+          
+//          if(cmd_rcv.check_sum == local_check_sum)
+            new_cmd = true;
+          }
+          break;
       }
     }
   }
@@ -93,10 +147,19 @@ void loop() {
     new_cmd = false;
   }
  
-  updateStatus();
+//  updateStatus();
 
   stepper1.run();
   stepper2.run();
+
+//  if (changeDir_x) {
+//      stepper1.setSpeed(1000);
+//      changeDir_x = false;
+//  }
+//  if (changeDir_y) {
+//    stepper2.setSpeed(1000);
+//    changeDir_y = false;
+//  }
 }
 
 boolean moveSteppers(float dX, float dY) {
@@ -108,26 +171,40 @@ boolean moveSteppers(float dX, float dY) {
   float dA = dX + dY;
   float dB = dX - dY;
 
-  if (stepper1.distanceToGo() == 0) {
-    stepper1_fin = true; 
+  // Check if steppers should be constant speed or not
+  if (dX - dX_prev < 0) {
+    changeDir_x = true;
   }
-  if (stepper2.distanceToGo() == 0) {
-    stepper2_fin = true;
+  if (dY - dY_prev < 0) {
+    changeDir_y = true;
   }
+  dX_prev = dX;
+  dY_prev = dY;
+  
+  // Move steppers if both are stopped
+  if (stepper1.distanceToGo() != 0 || stepper2.distanceToGo() != 0) {
+      stepper1.stop();
+      stepper2.stop();
+  } 
+  stepper1.move(dA);
+  stepper2.move(dB);
 
-  if (stepper1_fin && stepper2_fin) {
-    stepper1.move(dA);
-    stepper2.move(dB);
-    stepper1_fin = false;
-    stepper2_fin = false;
-    return true;
-  } else {
-    return false;
-  }
+//  if(dA == 0)
+//    stepper1.stop();
+//  else
+//    stepper1.move(dA);
+//    
+//  if(dB == 0)
+//    stepper2.stop();
+//  else
+//    stepper2.move(dB);
+  
+  return true;
+  
 }
 
 void updateStatus() {
   if (!stepper1.isRunning() && !stepper2.isRunning()) {
-      Serial.write("ready");
+//      Serial.write("ready");
     }
 }
