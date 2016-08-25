@@ -2,13 +2,13 @@
  *  
  * Control stepper motors through serial commands. Improved speed performance of serial communication.
  * 
- * Last edited: August 24, 2016
+ * Last edited: August 25, 2016
  * Author: Justin Lam
  */
 
 #include <AccelStepper.h>
 
-#define MAX_SPEED 2000 // 1200
+#define MAX_SPEED 2200 // 1200
 #define MAX_ACCEL 2000 // 2000
 #define BUFFER_SIZE 20
 #define X_STEP_PIN 2
@@ -90,11 +90,11 @@ void setup() {
   pinMode(Y_DIR_PIN, OUTPUT);
 
   // Initialize stepper motors
-  stepper1.setMaxSpeed(MAX_SPEED/STEP_NUM);
-  stepper1.setAcceleration(MAX_ACCEL/STEP_NUM);  
+  stepper1.setMaxSpeed(MAX_SPEED);
+  stepper1.setAcceleration(MAX_ACCEL);  
   
-  stepper2.setMaxSpeed(MAX_SPEED/STEP_NUM);
-  stepper2.setAcceleration(MAX_ACCEL/STEP_NUM); 
+  stepper2.setMaxSpeed(MAX_SPEED);
+  stepper2.setAcceleration(MAX_ACCEL); 
 
   // Initialize variables
   inputX.reserve(BUFFER_SIZE);
@@ -107,15 +107,22 @@ void setup() {
 uint8_t rcv_buff[12];
 uint8_t i = 0;
 boolean new_cmd = false;
-float dX_prev = 0;
-float dY_prev = 0;
-bool changeDir_x = false;
-bool changeDir_y = false;
+uint32_t dA_prev = 0;
+uint32_t dB_prev = 0;
+bool changeDir_A = true;
+bool changeDir_B = true;
 uint16_t local_check_sum = 0;
 uint8_t mode = 0;
+bool firstPass = true;
+
 void loop() {
 
   if(Serial.available() > 0) {
+    if (firstPass) {
+      stepper1.setCurrentPosition(0);
+      stepper2.setCurrentPosition(0);
+      firstPass = false;
+    }
     while(Serial.available() > 0) {
       switch(mode) {
        case 0:
@@ -147,20 +154,28 @@ void loop() {
     moveSteppers(cmd_rcv.pos_x, cmd_rcv.pos_y);
     new_cmd = false;
   }
- 
-//  updateStatus();
 
   stepper1.run();
   stepper2.run();
+ 
 
-//  if (changeDir_x) {
-//      stepper1.setSpeed(1000);
-//      changeDir_x = false;
+//  if (changeDir_A) {
+//    stepper1.run();
+//    changeDir_A = false;
+//  } 
+//  else {
+//    stepper1.runSpeed();
 //  }
-//  if (changeDir_y) {
-//    stepper2.setSpeed(1000);
-//    changeDir_y = false;
+//
+//  if (changeDir_B) {
+//    stepper2.run();
+//    changeDir_B = false;
+//  } 
+//  else {
+//    stepper2.runSpeed();
 //  }
+  
+
 }
 
 boolean moveSteppers(uint32_t dX, uint32_t dY) {
@@ -169,22 +184,23 @@ boolean moveSteppers(uint32_t dX, uint32_t dY) {
   uint32_t dB = dX - dY;
 
   // Check if steppers should be constant speed or not
-  if (dX - dX_prev < 0) {
-    changeDir_x = true;
+  if (dX - dA_prev < 0) {
+    changeDir_A = true;
   }
-  if (dY - dY_prev < 0) {
-    changeDir_y = true;
+  if (dY - dB_prev < 0) {
+    changeDir_B = true;
   }
-  dX_prev = dX;
-  dY_prev = dY;
   
-  // Move steppers if both are stopped
-  if (stepper1.distanceToGo() != 0 || stepper2.distanceToGo() != 0) {
-      stepper1.stop();
-      stepper2.stop();
-  } 
-  stepper1.move(dA);
-  stepper2.move(dB);
+  dA_prev = dX;
+  dB_prev = dY;
+  
+  // Stop steppers if they're still moving
+//  if (stepper1.distanceToGo() != 0 || stepper2.distanceToGo() != 0) {
+//      stepper1.stop();
+//      stepper2.stop();
+//  } 
+  stepper1.moveTo(dA);
+  stepper2.moveTo(dB);
 
 //  if(dA == 0)
 //    stepper1.stop();
