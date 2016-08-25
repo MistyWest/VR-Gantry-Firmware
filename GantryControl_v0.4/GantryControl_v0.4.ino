@@ -42,8 +42,8 @@ float dX, dY;
 float pos;
 
 typedef struct CMD_RCV_S {
-  float pos_x;
-  float pos_y;
+  uint32_t pos_x;
+  uint32_t pos_y;
   uint16_t check_sum;
 } cmd_rcv_t;
 
@@ -131,7 +131,7 @@ void loop() {
           i = 0;
           UnStuffData( rcv_buff, 11, (uint8_t *)(&cmd_rcv));
           local_check_sum = Fletcher16( (uint8_t *)(&cmd_rcv), 8);
-          Serial.print(local_check_sum);
+         
           
           if(cmd_rcv.check_sum == local_check_sum)
             new_cmd = true;
@@ -143,6 +143,7 @@ void loop() {
   
   // Check if complete serial command was received
   if (new_cmd) {
+    Serial.print(cmd_rcv.pos_x);
     moveSteppers(cmd_rcv.pos_x, cmd_rcv.pos_y);
     new_cmd = false;
   }
@@ -162,14 +163,10 @@ void loop() {
 //  }
 }
 
-boolean moveSteppers(float dX, float dY) {
-  float distToSteps = 360 / (2 * 3.141592654 * PULLEY_RADIUS * STEP_NUM * STEP_SIZE);
+boolean moveSteppers(uint32_t dX, uint32_t dY) {
   
-  dX = dX * distToSteps;
-  dY = dY * distToSteps;
-  
-  float dA = dX + dY;
-  float dB = dX - dY;
+  uint32_t dA = dX + dY;
+  uint32_t dB = dX - dY;
 
   // Check if steppers should be constant speed or not
   if (dX - dX_prev < 0) {
