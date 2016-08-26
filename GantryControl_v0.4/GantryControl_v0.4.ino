@@ -8,8 +8,8 @@
 
 #include <AccelStepper.h>
 
-#define MAX_SPEED 1500 
-#define MAX_ACCEL 2500 
+#define MAX_SPEED 1200 // 1800
+#define MAX_ACCEL 20000 // 12500
 #define X_STEP_PIN 2
 #define X_DIR_PIN 3
 #define Y_STEP_PIN 4
@@ -76,6 +76,8 @@ void moveSteppers(uint32_t dX, uint32_t dY) {
 
   stepper1.moveTo(dA);
   stepper2.moveTo(dB);
+//  stepper1.moveTo(dX);
+//  stepper2.moveTo(dX);
   
 }
 
