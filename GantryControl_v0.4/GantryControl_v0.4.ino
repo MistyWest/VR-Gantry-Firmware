@@ -16,6 +16,11 @@
 #define Y_DIR_PIN 5
 #define STEP_NUM 0.5  // half-stepping
 
+
+
+
+
+
 // Initialize variables
 uint8_t rcv_buff[12];
 uint8_t i = 0;
