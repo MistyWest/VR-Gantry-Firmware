@@ -8,13 +8,13 @@
 
 #include <AccelStepper.h>
 
-#define MAX_SPEED 1200 // 1800
-#define MAX_ACCEL 20000 // 12500
+#define MAX_SPEED 1000 // 1800
+#define MAX_ACCEL 2000 // 12500
 #define X_STEP_PIN 2
 #define X_DIR_PIN 3
 #define Y_STEP_PIN 4
 #define Y_DIR_PIN 5
-#define STEP_NUM 0.5
+#define STEP_NUM 0.5  // half-stepping
 
 // Initialize variables
 uint8_t rcv_buff[12];
