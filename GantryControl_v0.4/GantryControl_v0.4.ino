@@ -79,11 +79,13 @@ void moveSteppers(uint32_t dX, uint32_t dY) {
   uint32_t dA = dX + dY;
   uint32_t dB = dX - dY;
 
+  if (stepper1.distanceToGo() != 0 || stepper2.distanceToGo() != 0) {
+    stepper1.stop();
+    stepper2.stop();
+  }
+
   stepper1.moveTo(dA);
   stepper2.moveTo(dB);
-  //  stepper1.moveTo(dX);
-  //  stepper2.moveTo(dX);
-
 }
 
 void setup() {
