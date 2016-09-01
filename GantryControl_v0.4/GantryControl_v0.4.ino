@@ -24,10 +24,10 @@
 #define Y_MIN_PIN 2
 #define Y_MAX_PIN 3
 #define STEP_NUM 0.5  // half-stepping
-#define GANTRY_SIZE_X 4934  // 1.55m length, 2cm pulley radius, 1.8deg step size, 1/2 step
-#define GANTRY_SIZE_Y 4934 
-#define DEBOUNCE_DELAY 10
-#define GANTRY_BOUND_OFFSET 15
+#define GANTRY_SIZE_X 4934  // 1.55m length, 2cm pulley radius, 1.8deg step size, 1/2 step = 4934
+#define GANTRY_SIZE_Y 4950 
+#define DEBOUNCE_DELAY 5
+#define GANTRY_BOUND_OFFSET 25
 
 // Initialize variables
 uint8_t rcv_buff[12];
@@ -37,10 +37,10 @@ uint16_t local_check_sum = 0;
 uint8_t mode = 0;
 
 // Initialize arbitrary limit switch boundaries
-int32_t y_max = GANTRY_SIZE_Y / 2;
-int32_t x_max = GANTRY_SIZE_X / 2;
-int32_t y_min = - GANTRY_SIZE_Y / 2;
-int32_t x_min = - GANTRY_SIZE_X / 2;
+int32_t y_max = 99999999;
+int32_t x_max = 99999999;
+int32_t y_min = -99999999;
+int32_t x_min = -99999999;
 
 typedef struct CMD_RCV_S {
   int32_t pos_x;
@@ -82,8 +82,8 @@ class LimitSwitch{
         state = reading;
       
         if (state == LOW) {
-          stepper1.stop();
-          stepper2.stop();
+//          stepper1.stop();
+//          stepper2.stop();
           switchPressed = true;
         }
       }
@@ -136,8 +136,33 @@ void UnStuffData(const uint8_t *ptr, unsigned long length, uint8_t *dst) {
   }
 }
 
+void calibrateAxes() { 
+  stepper1.setSpeed(0.01);
+  stepper2.setSpeed(0.01);
+
+  int32_t y_max_prev = y_max;
+  int32_t dist = 1;
+  
+  while(y_max == y_max_prev) {
+    sendCommandToSteppers(0,dist);
+    dist += 1;
+    stepper1.runSpeed();
+    stepper2.runSpeed();
+    delay(5);
+  }
+//  stepper1.stop();
+//  stepper2.stop();
+  moveSteppers(0,0);
+  y_min = y_max - GANTRY_SIZE_Y - GANTRY_BOUND_OFFSET;
+}
+
 // Command the steppers to move to an absolute position
 void moveSteppers(int32_t dX, int32_t dY) {
+  if (dX == 99999 && dY == 99999) {
+    calibrateAxes();
+    return;
+  }
+  // Check if the positions are out of bounds
   if (dY > y_max)
     dY = y_max;
   else if (dY < y_min)
@@ -148,21 +173,17 @@ void moveSteppers(int32_t dX, int32_t dY) {
   else if (dX < x_min)
     dX = x_min;
     
-//  bool checkYBounds = (dY <= y_max && dY >= y_min);
-//  bool checkXBounds = (dX <= x_max && dX >= x_min);
+  int32_t dA = dX + dY;
+  int32_t dB = dX - dY;
+
+  if (stepper1.distanceToGo() != 0 || stepper2.distanceToGo() != 0) {
+    stepper1.stop();
+    stepper2.stop();
+  }
   
-//  if (checkYBounds && checkXBounds) {
-    int32_t dA = dX + dY;
-    int32_t dB = dX - dY;
-  
-    if (stepper1.distanceToGo() != 0 || stepper2.distanceToGo() != 0) {
-      stepper1.stop();
-      stepper2.stop();
-    }
-    
-    stepper1.moveTo(dA);
-    stepper2.moveTo(dB);
-//  }
+  stepper1.moveTo(dA);
+  stepper2.moveTo(dB);
+
 }
 
 // Verify the incoming serial packet is a legit command
@@ -191,7 +212,7 @@ void parseSerialPacket() {
   }
 }
 
-void sendCommandToSteppers() {
+void sendCommandToSteppers(int32_t x, int32_t y) {
   bool y_max_pressed, y_min_pressed, x_max_pressed, x_min_pressed;
   
   y_max_pressed = YMaxSwitch.CheckSwitchPress();
@@ -200,23 +221,23 @@ void sendCommandToSteppers() {
   x_min_pressed = XMinSwitch.CheckSwitchPress();
 
   if (y_max_pressed) {
-    y_max = cmd_rcv.pos_y - GANTRY_BOUND_OFFSET;
+    y_max = y - GANTRY_BOUND_OFFSET;
 //    moveSteppers(cmd_rcv.pos_x, y_max);
   }
   else if (y_min_pressed) {
-    y_min = cmd_rcv.pos_y + GANTRY_BOUND_OFFSET;
+    y_min = y + GANTRY_BOUND_OFFSET;
 //    moveSteppers(cmd_rcv.pos_x, y_min);
   } 
   else if (x_max_pressed) {
-    x_max = cmd_rcv.pos_x - GANTRY_BOUND_OFFSET;
+    x_max = x - GANTRY_BOUND_OFFSET;
 //    moveSteppers(x_max, cmd_rcv.pos_y);
   }
   else if (x_min_pressed) {
-    x_min = cmd_rcv.pos_x + GANTRY_BOUND_OFFSET;
+    x_min = x + GANTRY_BOUND_OFFSET;
 //    moveSteppers(x_min, cmd_rcv.pos_y);
   }
   else {
-    moveSteppers(cmd_rcv.pos_x, cmd_rcv.pos_y);
+    moveSteppers(x, y);
   }
 }
 
@@ -245,12 +266,12 @@ void setup() {
   Serial.begin(115200);
 }
 
-void loop() {
+void loop() {  
   if (Serial.available() > 0) {
     parseSerialPacket();
     
     if (new_cmd) {
-      sendCommandToSteppers();
+      sendCommandToSteppers(cmd_rcv.pos_x, cmd_rcv.pos_y);
       new_cmd = false;
     }
   }
