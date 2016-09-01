@@ -13,7 +13,7 @@
 
 #include <AccelStepper.h>
 
-#define MAX_SPEED 500  // 1040
+#define MAX_SPEED 500  // 1040 original
 #define MAX_ACCEL 800  // 1040
 #define X_STEP_PIN 6
 #define X_DIR_PIN 7
@@ -24,9 +24,10 @@
 #define Y_MIN_PIN 2
 #define Y_MAX_PIN 3
 #define STEP_NUM 0.5  // half-stepping
-#define GANTRY_SIZE_Y 4934 // 1.55m length, 2cm pulley radius, 1.8deg step size, 1/2 step
-#define DEBOUNCE_DELAY 5
-#define GANTRY_BOUND_OFFSET 5
+#define GANTRY_SIZE_X 4934  // 1.55m length, 2cm pulley radius, 1.8deg step size, 1/2 step
+#define GANTRY_SIZE_Y 4934 
+#define DEBOUNCE_DELAY 10
+#define GANTRY_BOUND_OFFSET 15
 
 // Initialize variables
 uint8_t rcv_buff[12];
@@ -34,20 +35,12 @@ uint8_t i = 0;
 boolean new_cmd = false;
 uint16_t local_check_sum = 0;
 uint8_t mode = 0;
-volatile uint8_t sw_state = 0;
-int32_t y_near_bound = 0;
-int32_t y_max = 999999999;
-int32_t y_min = 0;
-int32_t x_max = 0;
-int32_t x_min = 0;
-int32_t y_max_switch_pos = 0;
-int32_t x_offset = 0;
-int32_t y_offset = 0;
-unsigned long y_max_last_debounce = 0;
 
-int y_max_prev_state = HIGH;
-int y_max_state = 1;
-bool y_max_limit = false;
+// Initialize arbitrary limit switch boundaries
+int32_t y_max = GANTRY_SIZE_Y / 2;
+int32_t x_max = GANTRY_SIZE_X / 2;
+int32_t y_min = - GANTRY_SIZE_Y / 2;
+int32_t x_min = - GANTRY_SIZE_X / 2;
 
 typedef struct CMD_RCV_S {
   int32_t pos_x;
@@ -60,6 +53,56 @@ cmd_rcv_t cmd_rcv;
 // Define steppers and the pins they will use
 AccelStepper stepper1(AccelStepper::DRIVER, X_STEP_PIN, X_DIR_PIN);  // type, step pin, direction pin
 AccelStepper stepper2(AccelStepper::DRIVER, Y_STEP_PIN, Y_DIR_PIN);
+
+class LimitSwitch{
+  uint8_t switchPin;
+  uint8_t reading;
+  unsigned long last_debounce;
+  uint8_t prev_state;
+  uint8_t state;
+  bool switchPressed;
+
+  public:
+  LimitSwitch(uint8_t pin) {
+    switchPin = pin;
+    last_debounce = 0;
+    prev_state = HIGH;
+    state = HIGH;
+    switchPressed = false;
+  }
+  bool CheckSwitchPress() {
+    reading = digitalRead(switchPin);
+
+    if (reading != prev_state) {
+      last_debounce = millis();
+    }
+
+    if ((millis() - last_debounce) > DEBOUNCE_DELAY) {
+      if (reading != state) {
+        state = reading;
+      
+        if (state == LOW) {
+          stepper1.stop();
+          stepper2.stop();
+          switchPressed = true;
+        }
+      }
+      else {
+        switchPressed = false;
+      }
+    }
+    else {
+      switchPressed = false;
+    }
+    prev_state = reading;
+    return switchPressed;
+  }
+};
+
+LimitSwitch YMaxSwitch(Y_MAX_PIN);
+LimitSwitch YMinSwitch(Y_MIN_PIN);
+LimitSwitch XMaxSwitch(X_MAX_PIN);
+LimitSwitch XMinSwitch(X_MIN_PIN); 
 
 // Checksum to verify serial packet
 uint16_t Fletcher16(uint8_t *data, int count)
@@ -95,10 +138,20 @@ void UnStuffData(const uint8_t *ptr, unsigned long length, uint8_t *dst) {
 
 // Command the steppers to move to an absolute position
 void moveSteppers(int32_t dX, int32_t dY) {
-  dX += x_offset;
-  dY += y_offset;
+  if (dY > y_max)
+    dY = y_max;
+  else if (dY < y_min)
+    dY = y_min;
 
-  if (dY < y_max) {
+  if (dX > x_max)
+    dX = x_max;
+  else if (dX < x_min)
+    dX = x_min;
+    
+//  bool checkYBounds = (dY <= y_max && dY >= y_min);
+//  bool checkXBounds = (dX <= x_max && dX >= x_min);
+  
+//  if (checkYBounds && checkXBounds) {
     int32_t dA = dX + dY;
     int32_t dB = dX - dY;
   
@@ -109,7 +162,7 @@ void moveSteppers(int32_t dX, int32_t dY) {
     
     stepper1.moveTo(dA);
     stepper2.moveTo(dB);
-  }
+//  }
 }
 
 // Verify the incoming serial packet is a legit command
@@ -139,40 +192,32 @@ void parseSerialPacket() {
 }
 
 void sendCommandToSteppers() {
- 
-  int y_max_reading = digitalRead(Y_MAX_PIN);   // read the limit switch state
+  bool y_max_pressed, y_min_pressed, x_max_pressed, x_min_pressed;
+  
+  y_max_pressed = YMaxSwitch.CheckSwitchPress();
+  y_min_pressed = YMinSwitch.CheckSwitchPress();
+  x_max_pressed = XMaxSwitch.CheckSwitchPress();
+  x_min_pressed = XMinSwitch.CheckSwitchPress();
 
-  // Check if the switch changed, due to noise or actual pressing
-  if (y_max_reading != y_max_prev_state) {
-      y_max_last_debounce = millis();
+  if (y_max_pressed) {
+    y_max = cmd_rcv.pos_y - GANTRY_BOUND_OFFSET;
+//    moveSteppers(cmd_rcv.pos_x, y_max);
   }
-
-  // If the reading is longer than debounce_delay, then it's probably actually been pressed
-  if ((millis() - y_max_last_debounce) > DEBOUNCE_DELAY) {
-    if (y_max_reading != y_max_state) {   // if the button state has changed
-      y_max_state = y_max_reading;
-      
-      if (y_max_state == LOW) {
-        Serial.println("off");
-        stepper1.stop();
-        stepper2.stop();
-        y_max = cmd_rcv.pos_y - GANTRY_BOUND_OFFSET;
-      }
-    }
-    else {
-      moveSteppers(cmd_rcv.pos_x, cmd_rcv.pos_y);
-    }
-    
+  else if (y_min_pressed) {
+    y_min = cmd_rcv.pos_y + GANTRY_BOUND_OFFSET;
+//    moveSteppers(cmd_rcv.pos_x, y_min);
+  } 
+  else if (x_max_pressed) {
+    x_max = cmd_rcv.pos_x - GANTRY_BOUND_OFFSET;
+//    moveSteppers(x_max, cmd_rcv.pos_y);
+  }
+  else if (x_min_pressed) {
+    x_min = cmd_rcv.pos_x + GANTRY_BOUND_OFFSET;
+//    moveSteppers(x_min, cmd_rcv.pos_y);
   }
   else {
     moveSteppers(cmd_rcv.pos_x, cmd_rcv.pos_y);
   }
-  y_max_prev_state = y_max_reading;
-}
-
-void calibrateY(int32_t y_actual) {
-  y_offset = y_actual - GANTRY_SIZE_Y/2;
-  moveSteppers(cmd_rcv.pos_x,0);
 }
 
 void setup() {
@@ -208,7 +253,6 @@ void loop() {
       sendCommandToSteppers();
       new_cmd = false;
     }
-      
   }
   
   // Call these functions as often as possible
