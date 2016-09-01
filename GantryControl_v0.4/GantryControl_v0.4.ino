@@ -25,9 +25,10 @@
 #define Y_MAX_PIN 3
 #define STEP_NUM 0.5  // half-stepping
 #define GANTRY_SIZE_X 4934  // 1.55m length, 2cm pulley radius, 1.8deg step size, 1/2 step = 4934
-#define GANTRY_SIZE_Y 4950 
+#define GANTRY_SIZE_Y 4934 
 #define DEBOUNCE_DELAY 5
 #define GANTRY_BOUND_OFFSET 25
+#define Y_BODY_LENGTH 541 
 
 // Initialize variables
 uint8_t rcv_buff[12];
@@ -137,31 +138,34 @@ void UnStuffData(const uint8_t *ptr, unsigned long length, uint8_t *dst) {
 }
 
 void calibrateAxes() { 
-  stepper1.setSpeed(0.01);
-  stepper2.setSpeed(0.01);
+  bool y_max_pressed = false;
+  
+  stepper1.setSpeed(5);
+  stepper2.setSpeed(5);
 
   int32_t y_max_prev = y_max;
-  int32_t dist = 1;
+  int32_t dist = 0;
   
-  while(y_max == y_max_prev) {
-    sendCommandToSteppers(0,dist);
+  while(!y_max_pressed) {
+    delay(5);
     dist += 1;
+    moveSteppers(0,dist);
+    y_max_pressed = YMaxSwitch.CheckSwitchPress();
     stepper1.runSpeed();
     stepper2.runSpeed();
-    delay(5);
   }
-//  stepper1.stop();
-//  stepper2.stop();
-  moveSteppers(0,0);
-  y_min = y_max - GANTRY_SIZE_Y - GANTRY_BOUND_OFFSET;
+  moveSteppersRelative(0, -(GANTRY_SIZE_Y - Y_BODY_LENGTH)/2);
+  
+  if (stepper1.distanceToGo() == 0 && stepper2.distanceToGo() == 0) {
+    stepper1.setCurrentPosition(0);
+    stepper2.setCurrentPosition(0);
+    y_max = GANTRY_SIZE_Y / 2 - GANTRY_BOUND_OFFSET;
+    y_min = - y_max;
+  }
 }
 
 // Command the steppers to move to an absolute position
 void moveSteppers(int32_t dX, int32_t dY) {
-  if (dX == 99999 && dY == 99999) {
-    calibrateAxes();
-    return;
-  }
   // Check if the positions are out of bounds
   if (dY > y_max)
     dY = y_max;
@@ -183,7 +187,14 @@ void moveSteppers(int32_t dX, int32_t dY) {
   
   stepper1.moveTo(dA);
   stepper2.moveTo(dB);
+}
 
+void moveSteppersRelative(int32_t dX, int32_t dY) {
+  int32_t dA = dX + dY;
+  int32_t dB = dX - dY;
+
+  stepper1.move(dA);
+  stepper2.move(dB);
 }
 
 // Verify the incoming serial packet is a legit command
@@ -271,8 +282,12 @@ void loop() {
     parseSerialPacket();
     
     if (new_cmd) {
-      sendCommandToSteppers(cmd_rcv.pos_x, cmd_rcv.pos_y);
-      new_cmd = false;
+      if (cmd_rcv.pos_x == 99999 && cmd_rcv.pos_y == 99999)
+        calibrateAxes();
+      else {
+        sendCommandToSteppers(cmd_rcv.pos_x, cmd_rcv.pos_y);
+        new_cmd = false;
+      }
     }
   }
   
