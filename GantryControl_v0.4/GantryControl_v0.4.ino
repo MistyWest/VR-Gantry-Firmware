@@ -15,6 +15,7 @@
 
 #define MAX_SPEED 500  // 1040 original
 #define MAX_ACCEL 800  // 1040
+#define CALIBRATION_SPEED 7
 #define X_STEP_PIN 6
 #define X_DIR_PIN 7
 #define Y_STEP_PIN 4
@@ -33,9 +34,11 @@
 // Initialize variables
 uint8_t rcv_buff[12];
 uint8_t i = 0;
-boolean new_cmd = false;
+bool new_cmd = false;
 uint16_t local_check_sum = 0;
 uint8_t mode = 0;
+bool calibrate_y_axis = false;
+bool calibrate_x_axis = false;
 
 // Initialize arbitrary limit switch boundaries
 int32_t y_max = 99999999;
@@ -83,8 +86,6 @@ class LimitSwitch{
         state = reading;
       
         if (state == LOW) {
-//          stepper1.stop();
-//          stepper2.stop();
           switchPressed = true;
         }
       }
@@ -137,17 +138,16 @@ void UnStuffData(const uint8_t *ptr, unsigned long length, uint8_t *dst) {
   }
 }
 
-void calibrateAxes() { 
+void calibrateYAxis() { 
   bool y_max_pressed = false;
   
-  stepper1.setSpeed(5);
-  stepper2.setSpeed(5);
+  stepper1.setSpeed(CALIBRATION_SPEED);
+  stepper2.setSpeed(CALIBRATION_SPEED);
 
-  int32_t y_max_prev = y_max;
   int32_t dist = 0;
   
   while(!y_max_pressed) {
-    delay(5);
+    delay(CALIBRATION_SPEED);
     dist += 1;
     moveSteppers(0,dist);
     y_max_pressed = YMaxSwitch.CheckSwitchPress();
@@ -155,16 +155,53 @@ void calibrateAxes() {
     stepper2.runSpeed();
   }
   moveSteppersRelative(0, -(GANTRY_SIZE_Y - Y_BODY_LENGTH)/2);
-  
-  if (stepper1.distanceToGo() == 0 && stepper2.distanceToGo() == 0) {
-    stepper1.setCurrentPosition(0);
-    stepper2.setCurrentPosition(0);
-    y_max = GANTRY_SIZE_Y / 2 - GANTRY_BOUND_OFFSET;
-    y_min = - y_max;
+
+  while(stepper1.distanceToGo() != 0 && stepper2.distanceToGo() != 0) {
+    stepper1.run();
+    stepper2.run();
   }
+
+  stepper1.setCurrentPosition(0);
+  stepper2.setCurrentPosition(0);
+  y_max = GANTRY_SIZE_Y / 2 - GANTRY_BOUND_OFFSET;
+  y_min = - y_max;
+  calibrate_y_axis = false;
+  digitalWrite(13, HIGH);
+  // calibrate_x_axis = true;
 }
 
-// Command the steppers to move to an absolute position
+void calibrateXAxis() { 
+  bool x_max_pressed = false;
+  
+  stepper1.setSpeed(CALIBRATION_SPEED);
+  stepper2.setSpeed(CALIBRATION_SPEED);
+
+  int32_t dist = 0;
+  
+  while(!x_max_pressed) {
+    delay(CALIBRATION_SPEED);
+    dist += 1;
+    moveSteppers(dist,0);
+    x_max_pressed = XMaxSwitch.CheckSwitchPress();
+    stepper1.runSpeed();
+    stepper2.runSpeed();
+  }
+  moveSteppersRelative(-(GANTRY_SIZE_Y - Y_BODY_LENGTH)/2, 0);
+
+  while(stepper1.distanceToGo() != 0 && stepper2.distanceToGo() != 0) {
+    stepper1.run();
+    stepper2.run();
+  }
+
+  stepper1.setCurrentPosition(0);
+  stepper2.setCurrentPosition(0);
+  x_max = GANTRY_SIZE_X / 2 - GANTRY_BOUND_OFFSET;
+  x_min = - x_max;
+  calibrate_x_axis = false;
+  digitalWrite(13, LOW);
+}
+
+// Command the steppers to move to an absolute position if given an XY input
 void moveSteppers(int32_t dX, int32_t dY) {
   // Check if the positions are out of bounds
   if (dY > y_max)
@@ -189,6 +226,7 @@ void moveSteppers(int32_t dX, int32_t dY) {
   stepper2.moveTo(dB);
 }
 
+// Command the steppers to move to a relative position if given an XY input
 void moveSteppersRelative(int32_t dX, int32_t dY) {
   int32_t dA = dX + dY;
   int32_t dB = dX - dY;
@@ -261,6 +299,7 @@ void setup() {
   pinMode(X_MAX_PIN, INPUT_PULLUP);
   pinMode(Y_MAX_PIN, INPUT_PULLUP);
   pinMode(Y_MIN_PIN, INPUT_PULLUP);
+  pinMode(13, OUTPUT);  // onboard LED pin
 
   // Initialize stepper motors
   stepper1.setMaxSpeed(MAX_SPEED / STEP_NUM);
@@ -282,15 +321,27 @@ void loop() {
     parseSerialPacket();
     
     if (new_cmd) {
-      if (cmd_rcv.pos_x == 99999 && cmd_rcv.pos_y == 99999)
-        calibrateAxes();
+      if (cmd_rcv.pos_x == 99999 && cmd_rcv.pos_y == 99999) {
+        calibrate_y_axis = true;
+      }
+      else if (cmd_rcv.pos_x == 99998 && cmd_rcv.pos_y == 99998) {
+        calibrate_x_axis = true;
+      }
       else {
         sendCommandToSteppers(cmd_rcv.pos_x, cmd_rcv.pos_y);
-        new_cmd = false;
       }
+
+      new_cmd = false;
+    }
+
+    if (calibrate_y_axis) {
+      calibrateYAxis();
+    }
+    else if (calibrate_x_axis) {
+      calibrateXAxis();
     }
   }
-  
+
   // Call these functions as often as possible
   stepper1.run();
   stepper2.run();
