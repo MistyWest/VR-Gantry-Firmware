@@ -13,9 +13,9 @@
 
 #include <AccelStepper.h>
 
-#define MAX_SPEED 500  // 1040 original
+#define MAX_SPEED 800  // 1040 original
 #define MAX_ACCEL 800  // 1040
-#define CALIBRATION_SPEED 7
+#define CALIBRATION_SPEED 9
 #define X_STEP_PIN 6
 #define X_DIR_PIN 7
 #define Y_STEP_PIN 4
@@ -25,12 +25,13 @@
 #define Y_MIN_PIN 2
 #define Y_MAX_PIN 3
 #define STEP_NUM 0.5  // half-stepping
-#define GANTRY_SIZE_X 4934  // 1.55m length, 2cm pulley radius, 1.8deg step size, 1/2 step = 4934
-#define GANTRY_SIZE_Y 4934 
+#define GANTRY_SIZE_X 4934  // 4934: 1.55m length, 2cm pulley radius, 1.8deg step size, 1/2 step = 4934
+#define GANTRY_SIZE_Y 4920
 #define DEBOUNCE_DELAY 5
-#define GANTRY_BOUND_OFFSET 25
-#define X_BODY_LENGTH 541
-#define Y_BODY_LENGTH 541 
+#define GANTRY_BOUND_OFFSET 15
+#define X_BODY_LENGTH 433
+#define Y_BODY_LENGTH 643 
+#define CALIBRATION_CODE 0xF1ACA
 
 // Initialize variables
 uint8_t rcv_buff[12];
@@ -40,12 +41,13 @@ uint16_t local_check_sum = 0;
 uint8_t mode = 0;
 bool calibrate_axis = false;
 
-// Initialize arbitrary limit switch boundaries
+// Initialize arbitrary limit switch boundaries to be changed after calibration
 int32_t y_max = 99999999;
 int32_t x_max = 99999999;
 int32_t y_min = -99999999;
 int32_t x_min = -99999999;
 
+// Command to be received through serial port
 typedef struct CMD_RCV_S {
   int32_t pos_x;
   int32_t pos_y;
@@ -58,6 +60,7 @@ cmd_rcv_t cmd_rcv;
 AccelStepper stepper1(AccelStepper::DRIVER, X_STEP_PIN, X_DIR_PIN);  // type, step pin, direction pin
 AccelStepper stepper2(AccelStepper::DRIVER, Y_STEP_PIN, Y_DIR_PIN);
 
+// Class definition for limit switches mainly for debouncing
 class LimitSwitch{
   uint8_t switchPin;
   uint8_t reading;
@@ -101,14 +104,14 @@ class LimitSwitch{
   }
 };
 
+// Initialize limit switches
 LimitSwitch YMaxSwitch(Y_MAX_PIN);
 LimitSwitch YMinSwitch(Y_MIN_PIN);
 LimitSwitch XMaxSwitch(X_MAX_PIN);
 LimitSwitch XMinSwitch(X_MIN_PIN); 
 
 // Checksum to verify serial packet
-uint16_t Fletcher16(uint8_t *data, int count)
-{
+uint16_t Fletcher16(uint8_t *data, int count) {
   uint16_t sum1 = 0;
   uint16_t sum2 = 0;
   int index;
@@ -121,12 +124,8 @@ uint16_t Fletcher16(uint8_t *data, int count)
   return (sum2 << 8) | sum1;
 }
 
-/*
-  UnStuffData decodes "length" bytes of
-  data at the location pointed to by "ptr",
-  writing the output to the location pointed
-  to by "dst".
-*/
+// UnStuffData decodes "length" bytes of data at the location pointed to by "ptr",
+// writing the output to the location pointed to by "dst".
 void UnStuffData(const uint8_t *ptr, unsigned long length, uint8_t *dst) {
   const uint8_t *end = ptr + length;
   while (ptr < end)  {
@@ -150,7 +149,7 @@ void calibrateAxis(char axis) {
 
   // Keep moving in the specified direction until the switch is hit
   while(!switch_pressed) {
-    delay(CALIBRATION_SPEED);
+    delay(CALIBRATION_SPEED/3);
     dist += 1;
 
     switch (axis) {
@@ -173,7 +172,7 @@ void calibrateAxis(char axis) {
   // Move the gantry to the center of the axis to set the correct zero position
   switch (axis) {
     case 'x':
-      moveSteppersRelative(-(GANTRY_SIZE_X - Y_BODY_LENGTH)/2, 0);
+      moveSteppersRelative(-(GANTRY_SIZE_X - X_BODY_LENGTH)/2, 0);
       break;
 
     case 'y':
@@ -221,11 +220,6 @@ void moveSteppers(int32_t dX, int32_t dY) {
     
   int32_t dA = dX + dY;
   int32_t dB = dX - dY;
-
-  if (stepper1.distanceToGo() != 0 || stepper2.distanceToGo() != 0) {
-    stepper1.stop();
-    stepper2.stop();
-  }
   
   stepper1.moveTo(dA);
   stepper2.moveTo(dB);
@@ -267,32 +261,74 @@ void parseSerialPacket() {
 }
 
 void sendCommandToSteppers(int32_t x, int32_t y) {
-  bool y_max_pressed, y_min_pressed, x_max_pressed, x_min_pressed;
   
-  y_max_pressed = YMaxSwitch.CheckSwitchPress();
-  y_min_pressed = YMinSwitch.CheckSwitchPress();
-  x_max_pressed = XMaxSwitch.CheckSwitchPress();
-  x_min_pressed = XMinSwitch.CheckSwitchPress();
+  moveSteppers(x, y);
+}
 
-  if (y_max_pressed) {
-    y_max = y - GANTRY_BOUND_OFFSET;
-//    moveSteppers(cmd_rcv.pos_x, y_max);
-  }
-  else if (y_min_pressed) {
-    y_min = y + GANTRY_BOUND_OFFSET;
-//    moveSteppers(cmd_rcv.pos_x, y_min);
+void checkLimitSwitches() {
+  bool y_max_pressed = false;
+  bool y_min_pressed = false;
+  bool x_max_pressed = false;
+  bool x_min_pressed = false;
+
+  int32_t x, y;
+
+  x = getCurrentX();
+  y = getCurrentY();
+
+  // only check one of the x limit switches
+  if (x > 0) {
+    x_max_pressed = XMaxSwitch.CheckSwitchPress();
   } 
-  else if (x_max_pressed) {
-    x_max = x - GANTRY_BOUND_OFFSET;
-//    moveSteppers(x_max, cmd_rcv.pos_y);
+  else {
+    x_min_pressed = XMinSwitch.CheckSwitchPress();
   }
-  else if (x_min_pressed) {
-    x_min = x + GANTRY_BOUND_OFFSET;
-//    moveSteppers(x_min, cmd_rcv.pos_y);
+
+  // only check one of the y limit switches
+  if (y > 0) {
+    y_max_pressed = YMaxSwitch.CheckSwitchPress();
   }
   else {
-    moveSteppers(x, y);
+    y_min_pressed = YMinSwitch.CheckSwitchPress();
   }
+
+  // reset the min/max boundaries if a switch has been pressed
+  if (y_max_pressed) {
+    y_max = getCurrentY() - GANTRY_BOUND_OFFSET;
+    stopMotors();
+    moveSteppersRelative(0, y_max);
+  }
+  else if (y_min_pressed) {
+    y_min = getCurrentY() + GANTRY_BOUND_OFFSET;
+    stopMotors();
+    moveSteppersRelative(0, y_min);
+  } 
+  else if (x_max_pressed) {
+    x_max = getCurrentX() - GANTRY_BOUND_OFFSET;
+    stopMotors();
+    moveSteppersRelative(x_max, 0);
+  }
+  else if (x_min_pressed) {
+    x_min = getCurrentX() + GANTRY_BOUND_OFFSET;
+    stopMotors();
+    moveSteppersRelative(x_min, 0);
+  }
+}
+
+// Gets the instantaneous X value based on both stepper positions
+int32_t getCurrentX() {
+  return (stepper1.currentPosition() + stepper2.currentPosition()) / 2;
+}
+
+// Gets the instantaneous Y value based on both stepper positions
+int32_t getCurrentY() {
+  return (stepper1.currentPosition() - stepper2.currentPosition()) / 2;
+}
+
+// Stop both motors
+void stopMotors() {
+  stepper1.stop();
+  stepper2.stop();
 }
 
 void setup() {
@@ -305,6 +341,8 @@ void setup() {
   pinMode(Y_MAX_PIN, INPUT_PULLUP);
   pinMode(Y_MIN_PIN, INPUT_PULLUP);
   pinMode(13, OUTPUT);  // onboard LED pin
+
+  digitalWrite(13, LOW);  // make sure LED is off 
 
   // Initialize stepper motors
   stepper1.setMaxSpeed(MAX_SPEED / STEP_NUM);
@@ -326,19 +364,22 @@ void loop() {
     parseSerialPacket();
     
     if (new_cmd) {
-      if (cmd_rcv.pos_x == 0xF1ACA && cmd_rcv.pos_y == 0xF1ACA) {
+      // Run the calibration procedure
+      if (cmd_rcv.pos_x == CALIBRATION_CODE && cmd_rcv.pos_y == CALIBRATION_CODE) {
         calibrateAxis('y');
         calibrateAxis('x');
+        digitalWrite(13, HIGH); // turn onboard led on to signify calibration complete
       }
       else {
-        sendCommandToSteppers(cmd_rcv.pos_x, cmd_rcv.pos_y);
+        moveSteppers(cmd_rcv.pos_x, cmd_rcv.pos_y);
       }
       new_cmd = false;
     }
   }
 
+  checkLimitSwitches();
+
   // Call these functions as often as possible
   stepper1.run();
   stepper2.run();
 }
-
