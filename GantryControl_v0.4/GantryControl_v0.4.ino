@@ -29,6 +29,7 @@
 #define GANTRY_SIZE_Y 4934 
 #define DEBOUNCE_DELAY 5
 #define GANTRY_BOUND_OFFSET 25
+#define X_BODY_LENGTH 541
 #define Y_BODY_LENGTH 541 
 
 // Initialize variables
@@ -37,8 +38,7 @@ uint8_t i = 0;
 bool new_cmd = false;
 uint16_t local_check_sum = 0;
 uint8_t mode = 0;
-bool calibrate_y_axis = false;
-bool calibrate_x_axis = false;
+bool calibrate_axis = false;
 
 // Initialize arbitrary limit switch boundaries
 int32_t y_max = 99999999;
@@ -138,67 +138,72 @@ void UnStuffData(const uint8_t *ptr, unsigned long length, uint8_t *dst) {
   }
 }
 
-void calibrateYAxis() { 
-  bool y_max_pressed = false;
-  
+// Calibration procedure to properly zero the gantry
+void calibrateAxis(char axis) {
+  bool switch_pressed = false;
+
+  // Run at a slower speed so it doesn't smash into the limit switches
   stepper1.setSpeed(CALIBRATION_SPEED);
   stepper2.setSpeed(CALIBRATION_SPEED);
 
   int32_t dist = 0;
-  
-  while(!y_max_pressed) {
+
+  // Keep moving in the specified direction until the switch is hit
+  while(!switch_pressed) {
     delay(CALIBRATION_SPEED);
     dist += 1;
-    moveSteppers(0,dist);
-    y_max_pressed = YMaxSwitch.CheckSwitchPress();
+
+    switch (axis) {
+    case 'x':
+      moveSteppers(dist,0);
+      switch_pressed = XMaxSwitch.CheckSwitchPress();
+      break;
+
+    case 'y':
+      moveSteppers(0,dist);
+      switch_pressed = YMaxSwitch.CheckSwitchPress();
+      break;
+    }
+
+    // Run at constant speed w/o accel/decel
     stepper1.runSpeed();
     stepper2.runSpeed();
   }
-  moveSteppersRelative(0, -(GANTRY_SIZE_Y - Y_BODY_LENGTH)/2);
 
+  // Move the gantry to the center of the axis to set the correct zero position
+  switch (axis) {
+    case 'x':
+      moveSteppersRelative(-(GANTRY_SIZE_X - Y_BODY_LENGTH)/2, 0);
+      break;
+
+    case 'y':
+      moveSteppersRelative(0, -(GANTRY_SIZE_Y - Y_BODY_LENGTH)/2);
+      break;
+  }
+
+  // Keep running the steppers until it's at the position
   while(stepper1.distanceToGo() != 0 && stepper2.distanceToGo() != 0) {
     stepper1.run();
     stepper2.run();
   }
 
+  // Set the current position as the new zero
   stepper1.setCurrentPosition(0);
   stepper2.setCurrentPosition(0);
-  y_max = GANTRY_SIZE_Y / 2 - GANTRY_BOUND_OFFSET;
-  y_min = - y_max;
-  calibrate_y_axis = false;
-  digitalWrite(13, HIGH);
-  // calibrate_x_axis = true;
-}
 
-void calibrateXAxis() { 
-  bool x_max_pressed = false;
-  
-  stepper1.setSpeed(CALIBRATION_SPEED);
-  stepper2.setSpeed(CALIBRATION_SPEED);
+  // Set the software axis limits
+  switch (axis) {
+    case 'x':
+      x_max = (GANTRY_SIZE_X - X_BODY_LENGTH) / 2 - GANTRY_BOUND_OFFSET;
+      x_min = - x_max;
+      break;
 
-  int32_t dist = 0;
-  
-  while(!x_max_pressed) {
-    delay(CALIBRATION_SPEED);
-    dist += 1;
-    moveSteppers(dist,0);
-    x_max_pressed = XMaxSwitch.CheckSwitchPress();
-    stepper1.runSpeed();
-    stepper2.runSpeed();
-  }
-  moveSteppersRelative(-(GANTRY_SIZE_Y - Y_BODY_LENGTH)/2, 0);
-
-  while(stepper1.distanceToGo() != 0 && stepper2.distanceToGo() != 0) {
-    stepper1.run();
-    stepper2.run();
-  }
-
-  stepper1.setCurrentPosition(0);
-  stepper2.setCurrentPosition(0);
-  x_max = GANTRY_SIZE_X / 2 - GANTRY_BOUND_OFFSET;
-  x_min = - x_max;
-  calibrate_x_axis = false;
-  digitalWrite(13, LOW);
+    case 'y':
+      y_max = (GANTRY_SIZE_Y - Y_BODY_LENGTH) / 2 - GANTRY_BOUND_OFFSET;
+      y_min = - y_max;
+      break;
+  }  
+  // return false;
 }
 
 // Command the steppers to move to an absolute position if given an XY input
@@ -321,24 +326,14 @@ void loop() {
     parseSerialPacket();
     
     if (new_cmd) {
-      if (cmd_rcv.pos_x == 99999 && cmd_rcv.pos_y == 99999) {
-        calibrate_y_axis = true;
-      }
-      else if (cmd_rcv.pos_x == 99998 && cmd_rcv.pos_y == 99998) {
-        calibrate_x_axis = true;
+      if (cmd_rcv.pos_x == 0xF1ACA && cmd_rcv.pos_y == 0xF1ACA) {
+        calibrateAxis('y');
+        calibrateAxis('x');
       }
       else {
         sendCommandToSteppers(cmd_rcv.pos_x, cmd_rcv.pos_y);
       }
-
       new_cmd = false;
-    }
-
-    if (calibrate_y_axis) {
-      calibrateYAxis();
-    }
-    else if (calibrate_x_axis) {
-      calibrateXAxis();
     }
   }
 
