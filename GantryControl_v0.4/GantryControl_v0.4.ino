@@ -13,8 +13,8 @@
 
 #include <AccelStepper.h>
 
-#define MAX_SPEED 800  // 1040 original
-#define MAX_ACCEL 800  // 1040
+#define MAX_SPEED 700  // 1040 original
+#define MAX_ACCEL 600  // 1040
 #define CALIBRATION_SPEED 9
 #define X_STEP_PIN 6
 #define X_DIR_PIN 7
@@ -30,7 +30,7 @@
 #define DEBOUNCE_DELAY 5
 #define GANTRY_BOUND_OFFSET 15
 #define X_BODY_LENGTH 433
-#define Y_BODY_LENGTH 643 
+#define Y_BODY_LENGTH 823 // 643 
 #define CALIBRATION_CODE 0xF1ACA
 
 // Initialize variables
