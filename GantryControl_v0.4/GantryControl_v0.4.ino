@@ -13,8 +13,8 @@
 
 #include <AccelStepper.h>
 
-#define MAX_SPEED 700  // 1040 original
-#define MAX_ACCEL 600  // 1040
+#define MAX_SPEED 900  // 1040 original
+#define MAX_ACCEL 900  // 1040
 #define CALIBRATION_SPEED 9
 #define X_STEP_PIN 6
 #define X_DIR_PIN 7
