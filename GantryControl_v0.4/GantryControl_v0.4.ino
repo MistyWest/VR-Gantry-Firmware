@@ -13,8 +13,9 @@
 
 #include <AccelStepper.h>
 
-#define MAX_SPEED 1040  // 1040 original
-#define MAX_ACCEL 1040  // 1040
+#define BAUD_RATE 115200
+#define MAX_SPEED 950  // 1040 original
+#define MAX_ACCEL 950  // 1040
 #define CALIBRATION_SPEED 10
 #define X_STEP_PIN 6
 #define X_DIR_PIN 7
@@ -358,7 +359,7 @@ void setup() {
   stepper2.setCurrentPosition(0);
 
   // Initialize serial communication
-  Serial.begin(115200);
+  Serial.begin(BAUD_RATE);
 }
 
 void loop() {  
