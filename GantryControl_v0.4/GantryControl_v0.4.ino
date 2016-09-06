@@ -13,9 +13,9 @@
 
 #include <AccelStepper.h>
 
-#define MAX_SPEED 900  // 1040 original
-#define MAX_ACCEL 900  // 1040
-#define CALIBRATION_SPEED 9
+#define MAX_SPEED 1040  // 1040 original
+#define MAX_ACCEL 1040  // 1040
+#define CALIBRATION_SPEED 10
 #define X_STEP_PIN 6
 #define X_DIR_PIN 7
 #define Y_STEP_PIN 4
@@ -28,10 +28,12 @@
 #define GANTRY_SIZE_X 4934  // 4934: 1.55m length, 2cm pulley radius, 1.8deg step size, 1/2 step = 4934
 #define GANTRY_SIZE_Y 4920
 #define DEBOUNCE_DELAY 5
-#define GANTRY_BOUND_OFFSET 15
+#define GANTRY_BOUND_OFFSET 25
 #define X_BODY_LENGTH 433
 #define Y_BODY_LENGTH 823 // 643 
 #define CALIBRATION_CODE 0xF1ACA
+#define X_DIR_INVERT true
+#define Y_DIR_INVERT true
 
 // Initialize variables
 uint8_t rcv_buff[12];
@@ -149,7 +151,7 @@ void calibrateAxis(char axis) {
 
   // Keep moving in the specified direction until the switch is hit
   while(!switch_pressed) {
-    delay(CALIBRATION_SPEED/3);
+    delay(3);
     dist += 1;
 
     switch (axis) {
@@ -260,11 +262,7 @@ void parseSerialPacket() {
   }
 }
 
-void sendCommandToSteppers(int32_t x, int32_t y) {
-  
-  moveSteppers(x, y);
-}
-
+// Check the status of the limit switches to see if one has been triggered
 void checkLimitSwitches() {
   bool y_max_pressed = false;
   bool y_min_pressed = false;
@@ -350,6 +348,10 @@ void setup() {
 
   stepper2.setMaxSpeed(MAX_SPEED / STEP_NUM);
   stepper2.setAcceleration(MAX_ACCEL / STEP_NUM);
+
+  // Invert pins if necessary
+  stepper1.setPinsInverted(X_DIR_INVERT);
+  stepper2.setPinsInverted(Y_DIR_INVERT);
 
   // Set origin to when it first turns on. Probably won't need this later
   stepper1.setCurrentPosition(0);
