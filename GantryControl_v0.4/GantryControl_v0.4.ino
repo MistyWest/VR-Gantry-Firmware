@@ -3,15 +3,15 @@
    Purpose: Control stepper motors in a CoreXY configuration through a Visual Studios C++ program using serial communication.
 
    Comments:
-   - Max steps/pulses per second (pps) of a given stepper motor is limited by the phase winding inductance and input voltage.
+   - 2016-08-29: Max steps/pulses per second (pps) of a given stepper motor is limited by the phase winding inductance and input voltage.
       - Using the current 57BHGY420-2 NEMA 23 motors with 5.5mH (+/- 20%) inductance per coil, the max is 1300 pps.
-   - Max pps that can be reliably sent by the AccelStepper library is 4000 pps on a 16MHz Arduino.
+   - 2016-08-29, 2016: Max pps that can be reliably sent by the AccelStepper library is 4000 pps on a 16MHz Arduino.
 
-   Last edited: August 29, 2016
    Author: Justin Lam
 */
 
 #include <AccelStepper.h>
+#include <LimitSwitch.h>
 
 #define BAUD_RATE 115200
 #define MAX_SPEED 950  // 1040 original
@@ -28,7 +28,6 @@
 #define STEP_NUM 0.5  // half-stepping
 #define GANTRY_SIZE_X 4934  // 4934: 1.55m length, 2cm pulley radius, 1.8deg step size, 1/2 step = 4934
 #define GANTRY_SIZE_Y 4920
-#define DEBOUNCE_DELAY 5
 #define GANTRY_BOUND_OFFSET 25
 #define X_BODY_LENGTH 433
 #define Y_BODY_LENGTH 823 // 643 
@@ -62,50 +61,6 @@ cmd_rcv_t cmd_rcv;
 // Define steppers and the pins they will use
 AccelStepper stepper1(AccelStepper::DRIVER, X_STEP_PIN, X_DIR_PIN);  // type, step pin, direction pin
 AccelStepper stepper2(AccelStepper::DRIVER, Y_STEP_PIN, Y_DIR_PIN);
-
-// Class definition for limit switches mainly for debouncing
-class LimitSwitch{
-  uint8_t switchPin;
-  uint8_t reading;
-  unsigned long last_debounce;
-  uint8_t prev_state;
-  uint8_t state;
-  bool switchPressed;
-
-  public:
-  LimitSwitch(uint8_t pin) {
-    switchPin = pin;
-    last_debounce = 0;
-    prev_state = HIGH;
-    state = HIGH;
-    switchPressed = false;
-  }
-  bool CheckSwitchPress() {
-    reading = digitalRead(switchPin);
-
-    if (reading != prev_state) {
-      last_debounce = millis();
-    }
-
-    if ((millis() - last_debounce) > DEBOUNCE_DELAY) {
-      if (reading != state) {
-        state = reading;
-      
-        if (state == LOW) {
-          switchPressed = true;
-        }
-      }
-      else {
-        switchPressed = false;
-      }
-    }
-    else {
-      switchPressed = false;
-    }
-    prev_state = reading;
-    return switchPressed;
-  }
-};
 
 // Initialize limit switches
 LimitSwitch YMaxSwitch(Y_MAX_PIN);
