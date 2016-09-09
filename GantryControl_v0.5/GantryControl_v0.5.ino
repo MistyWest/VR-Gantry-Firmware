@@ -16,19 +16,20 @@
 #include <avr/io.h>
 #include <avr/interrupt.h>
 
-#define MAX_SPEED 950       // 1040 original
-#define MAX_ACCEL 950       // 1040
+#define MAX_SPEED 1200       // 1040 original
+#define MAX_ACCEL 1200       // 1040
 #define CALIBRATION_SPEED 10
 #define CALIBRATION_CODE 0xF1ACA
+#define STOP_CODE 0xEF355
 #define BAUD_RATE 115200
 #define SM_X_DIR_INVERT true  // invert stepper direction if going in opposite direction
 #define SM_Y_DIR_INVERT true
-#define SM_X_STEP_PIN 14    // stepper motor pins
-#define SM_X_DIR_PIN  15
-#define SM_Y_STEP_PIN 16
-#define SM_Y_DIR_PIN  17
-#define LS_X_MIN_PIN 2      // limit switch interrupt pins (blue)
-#define LS_X_MAX_PIN 3      // (green)
+#define SM_X_STEP_PIN 16    // stepper motor pins
+#define SM_X_DIR_PIN  17
+#define SM_Y_STEP_PIN 14
+#define SM_Y_DIR_PIN  15
+#define LS_X_MIN_PIN 3      // limit switch interrupt pins (blue)
+#define LS_X_MAX_PIN 2      // (green)
 #define LS_Y_MIN_PIN 4      // (red)
 #define LS_Y_MAX_PIN 5      // (yellow)
 #define STEP_NUM 0.5        // half-stepping
@@ -203,6 +204,7 @@ void moveSteppersRelative(int32_t dX, int32_t dY) {
 
 // Verify the incoming serial packet is a legit command and set flag if true
 void parseSerialPacket() {
+  digitalWrite(13, HIGH);
   while (Serial.available() > 0) {
     switch (mode) {
       case 0:
@@ -225,6 +227,7 @@ void parseSerialPacket() {
         break;
     }
   }
+  digitalWrite(13, LOW);
 }
 
 // Check if there's a new command available and execute on it if true
@@ -235,6 +238,9 @@ void executeNewCmd() {
       calibrateAxis('y');
       calibrateAxis('x');
       digitalWrite(13, HIGH); // turn onboard led on to signify calibration complete
+    }
+    else if (cmd_rcv.pos_x == STOP_CODE && cmd_rcv.pos_y == STOP_CODE) {
+      stopMotors();
     }
     // Otherwise just send the command to the steppers
     else { 
@@ -359,10 +365,10 @@ void setup() {
   digitalWrite(13, LOW);  // turn LED on later after calibration
 
   // Enable interrupts using arduino fcns
-  attachInterrupt(LS_X_MIN_PIN, isr_sw_x_min, FALLING);
-  attachInterrupt(LS_X_MAX_PIN, isr_sw_x_max, FALLING);
-  attachInterrupt(LS_Y_MIN_PIN, isr_sw_y_min, FALLING);
-  attachInterrupt(LS_Y_MAX_PIN, isr_sw_y_max, FALLING);
+//  attachInterrupt(LS_X_MIN_PIN, isr_sw_x_min, FALLING);
+//  attachInterrupt(LS_X_MAX_PIN, isr_sw_x_max, FALLING);
+//  attachInterrupt(LS_Y_MIN_PIN, isr_sw_y_min, FALLING);
+//  attachInterrupt(LS_Y_MAX_PIN, isr_sw_y_max, FALLING);
 
   // Initialize stepper motors
   stepper1.setMaxSpeed(MAX_SPEED / STEP_NUM);
@@ -389,25 +395,27 @@ void loop() {
     executeNewCmd();
   }
 
-  // Check if one of the x_limit switches has been triggered
-  if (sw_x_min_flag) {
-    reset_limit('x', 0);
-    sw_x_min_flag = false;
-  }
-  else if (sw_x_max_flag) {
-    reset_limit('x', 1);
-    sw_x_max_flag = false;
-  }
+//  // Check if one of the x_limit switches has been triggered
+//  if (sw_x_min_flag) {
+//    reset_limit('x', 0);
+//    sw_x_min_flag = false;
+//  }
+//  else if (sw_x_max_flag) {
+//    reset_limit('x', 1);
+//    sw_x_max_flag = false;
+//  }
+//
+//  // Check if one of the y_limit switches has been triggered
+//  if (sw_y_min_flag) {
+//    reset_limit('y', 0);
+//    sw_y_min_flag = false;
+//  }
+//  else if (sw_y_max_flag) {
+//    reset_limit('y', 1);
+//    sw_y_max_flag = false;
+//  }
 
-  // Check if one of the y_limit switches has been triggered
-  if (sw_y_min_flag) {
-    reset_limit('y', 0);
-    sw_y_min_flag = false;
-  }
-  else if (sw_y_max_flag) {
-    reset_limit('y', 1);
-    sw_y_max_flag = false;
-  }
+  checkLimitSwitches();
 
   // Call these functions as often as possible
   stepper1.run();
