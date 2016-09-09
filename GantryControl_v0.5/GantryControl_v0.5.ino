@@ -13,11 +13,9 @@
 
 #include <AccelStepper.h>
 #include <LimitSwitch.h>
-#include <avr/io.h>
-#include <avr/interrupt.h>
 
-#define MAX_SPEED 1200       // 1040 original
-#define MAX_ACCEL 1200       // 1040
+#define MAX_SPEED 3000       // Max skip-less speed w/ Teensy @ 72MHz clock
+#define MAX_ACCEL 3000       
 #define CALIBRATION_SPEED 10
 #define CALIBRATION_CODE 0xF1ACA
 #define STOP_CODE 0xEF355
@@ -34,11 +32,12 @@
 #define LS_Y_MAX_PIN 5      // (yellow)
 #define STEP_NUM 0.5        // half-stepping
 #define GANTRY_SIZE_X 4934  // 4934: 1.55m length, 2cm pulley radius, 1.8deg step size, 1/2 step => 4934
-#define GANTRY_SIZE_Y 4920
-#define GANTRY_BOUND_OFFSET 25
-#define X_BODY_LENGTH 433
-#define Y_BODY_LENGTH 823   // 643
-
+#define GANTRY_SIZE_Y 4934
+#define GANTRY_BOUND_OFFSET 796   // 25 cm
+#define X_BODY_LENGTH 573   // 18 cm
+#define Y_BODY_LENGTH 637   // 20 cm
+#define CALIBRATION_OFFSET_X 159  // 5 cm
+#define CALIBRATION_OFFSET_Y 80   // 2.5 cm
 
 // Initialize variables
 uint8_t rcv_buff[12];
@@ -141,11 +140,11 @@ void calibrateAxis(char axis) {
   // Move the gantry to the center of the axis to set the correct zero position
   switch (axis) {
     case 'x':
-      moveSteppersRelative(-(GANTRY_SIZE_X - X_BODY_LENGTH)/2, 0);
+      moveSteppersRelative(-(GANTRY_SIZE_X - X_BODY_LENGTH)/2 - CALIBRATION_OFFSET_X, 0);
       break;
 
     case 'y':
-      moveSteppersRelative(0, -(GANTRY_SIZE_Y - Y_BODY_LENGTH)/2);
+      moveSteppersRelative(0, -(GANTRY_SIZE_Y - Y_BODY_LENGTH)/2 - CALIBRATION_OFFSET_Y);
       break;
   }
 
@@ -162,12 +161,12 @@ void calibrateAxis(char axis) {
   // Set the software axis limits
   switch (axis) {
     case 'x':
-      x_max = (GANTRY_SIZE_X - X_BODY_LENGTH) / 2 - GANTRY_BOUND_OFFSET;
+      x_max = GANTRY_SIZE_X / 2 - GANTRY_BOUND_OFFSET;
       x_min = - x_max;
       break;
 
     case 'y':
-      y_max = (GANTRY_SIZE_Y - Y_BODY_LENGTH) / 2 - GANTRY_BOUND_OFFSET;
+      y_max = GANTRY_SIZE_Y / 2 - GANTRY_BOUND_OFFSET;
       y_min = - y_max;
       break;
   }  
@@ -395,51 +394,9 @@ void loop() {
     executeNewCmd();
   }
 
-//  // Check if one of the x_limit switches has been triggered
-//  if (sw_x_min_flag) {
-//    reset_limit('x', 0);
-//    sw_x_min_flag = false;
-//  }
-//  else if (sw_x_max_flag) {
-//    reset_limit('x', 1);
-//    sw_x_max_flag = false;
-//  }
-//
-//  // Check if one of the y_limit switches has been triggered
-//  if (sw_y_min_flag) {
-//    reset_limit('y', 0);
-//    sw_y_min_flag = false;
-//  }
-//  else if (sw_y_max_flag) {
-//    reset_limit('y', 1);
-//    sw_y_max_flag = false;
-//  }
-
   checkLimitSwitches();
 
   // Call these functions as often as possible
   stepper1.run();
   stepper2.run();
 }
-
-// Interrupt for x_min limit switch
-void isr_sw_x_min() {
-  sw_x_min_flag = true;
-}
-
-// Interrupt for x_max limit switch
-void isr_sw_x_max() {
-  sw_x_max_flag = true;
-}
-
-// Interrupt for y_min limit switch
-void isr_sw_y_min() {
-  sw_y_min_flag = true;
-}
-
-// Interrupt for y_max limit switch
-void isr_sw_y_max() {
-  sw_y_max_flag = true;
-}
-
-
