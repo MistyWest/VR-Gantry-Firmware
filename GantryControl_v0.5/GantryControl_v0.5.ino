@@ -14,7 +14,7 @@
 #include <AccelStepper.h>
 #include <LimitSwitch.h>
 
-#define MAX_SPEED 3000       // Max skip-less speed w/ Teensy @ 72MHz clock
+#define MAX_SPEED 3000       // Max skip-less speed w/ Teensy 3.2 @ 96MHz clock
 #define MAX_ACCEL 3000       
 #define CALIBRATION_SPEED 10
 #define CALIBRATION_CODE 0xF1ACA
@@ -33,7 +33,7 @@
 #define STEP_NUM 0.5        // half-stepping
 #define GANTRY_SIZE_X 4934  // 4934: 1.55m length, 2cm pulley radius, 1.8deg step size, 1/2 step => 4934
 #define GANTRY_SIZE_Y 4934
-#define GANTRY_BOUND_OFFSET 796   // 25 cm
+#define GANTRY_BOUND_OFFSET 955   // 25 cm
 #define X_BODY_LENGTH 573   // 18 cm
 #define Y_BODY_LENGTH 637   // 20 cm
 #define CALIBRATION_OFFSET_X 159  // 5 cm
