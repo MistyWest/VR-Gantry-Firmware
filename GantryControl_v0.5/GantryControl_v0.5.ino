@@ -113,13 +113,10 @@ void calibrateAxis(char axis) {
   stepper1.setSpeed(CALIBRATION_SPEED);
   stepper2.setSpeed(CALIBRATION_SPEED);
 
-  int32_t dist = 0;
+  int32_t dist = 16;
 
   // Keep moving in the specified direction until the switch is hit
   while(!switch_pressed) {
-    delay(3);
-    dist += 1;
-
     switch (axis) {
     case 'x':
       moveSteppers(dist,0);
@@ -140,11 +137,11 @@ void calibrateAxis(char axis) {
   // Move the gantry to the center of the axis to set the correct zero position
   switch (axis) {
     case 'x':
-      moveSteppersRelative(-(GANTRY_SIZE_X - X_BODY_LENGTH)/2 - CALIBRATION_OFFSET_X, 0);
+      moveSteppers(-(GANTRY_SIZE_X - X_BODY_LENGTH)/2 - CALIBRATION_OFFSET_X, 0);
       break;
 
     case 'y':
-      moveSteppersRelative(0, -(GANTRY_SIZE_Y - Y_BODY_LENGTH)/2 - CALIBRATION_OFFSET_Y);
+      moveSteppers(0, -(GANTRY_SIZE_Y - Y_BODY_LENGTH)/2 - CALIBRATION_OFFSET_Y);
       break;
   }
 
@@ -173,7 +170,7 @@ void calibrateAxis(char axis) {
 }
 
 // Command the steppers to move to an absolute position if given an XY input
-void moveSteppers(int32_t dX, int32_t dY) {
+void moveSteppersTo(int32_t dX, int32_t dY) {
   // Check if the positions are out of bounds
   if (dY > y_max)
     dY = y_max;
@@ -193,7 +190,7 @@ void moveSteppers(int32_t dX, int32_t dY) {
 }
 
 // Command the steppers to move to a relative position if given an XY input
-void moveSteppersRelative(int32_t dX, int32_t dY) {
+void moveSteppers(int32_t dX, int32_t dY) {
   int32_t dA = dX + dY;
   int32_t dB = dX - dY;
 
@@ -243,7 +240,7 @@ void executeNewCmd() {
     }
     // Otherwise just send the command to the steppers
     else { 
-      moveSteppers(cmd_rcv.pos_x, cmd_rcv.pos_y);
+      moveSteppersTo(cmd_rcv.pos_x, cmd_rcv.pos_y);
     }
     new_cmd = false;
   }
@@ -281,22 +278,22 @@ void checkLimitSwitches() {
   if (y_max_pressed) {
     y_max = getCurrentY() - GANTRY_BOUND_OFFSET;
     stopMotors();
-    moveSteppersRelative(0, y_max);
+    moveSteppers(0, y_max);
   }
   else if (y_min_pressed) {
     y_min = getCurrentY() + GANTRY_BOUND_OFFSET;
     stopMotors();
-    moveSteppersRelative(0, y_min);
+    moveSteppers(0, y_min);
   } 
   else if (x_max_pressed) {
     x_max = getCurrentX() - GANTRY_BOUND_OFFSET;
     stopMotors();
-    moveSteppersRelative(x_max, 0);
+    moveSteppers(x_max, 0);
   }
   else if (x_min_pressed) {
     x_min = getCurrentX() + GANTRY_BOUND_OFFSET;
     stopMotors();
-    moveSteppersRelative(x_min, 0);
+    moveSteppers(x_min, 0);
   }
 }
 
@@ -340,7 +337,7 @@ void reset_limit(char axis, uint8_t location) {
   }
 
   stopMotors();
-  moveSteppersRelative(x, y); // move the gantry off the limit switch
+  moveSteppers(x, y); // move the gantry off the limit switch
 }
 
 // Stop both motors
