@@ -14,28 +14,30 @@
 #include <AccelStepper.h>
 #include <LimitSwitch.h>
 
-#define MAX_SPEED 3000       // Max skip-less speed w/ Teensy 3.2 @ 96MHz clock
+#define MAX_SPEED 3000            // Max skip-less speed w/ Teensy 3.2 @ 96MHz clock (determined by max processing speed and phase inductance of motors)
 #define MAX_ACCEL 3000       
-#define CALIBRATION_SPEED 10
-#define CALIBRATION_CODE 0xF1ACA
+#define KP_ACCEL  37.5          // proportional control constant for distance/accel. Max acceleration occurs when change is <= 30cm
+#define DELAY_LIM_SW_CHECK 10     // only check the switches every X milliseconds
+#define CALIBRATION_SPEED 10      // nice and slow speed to run the calibration procedure
+#define CALIBRATION_CODE 0xF1ACA  // this needs to match the c++ code
 #define STOP_CODE 0xEF355
-#define BAUD_RATE 115200
-#define SM_X_DIR_INVERT true  // invert stepper direction if going in opposite direction
+#define BAUD_RATE 115200    
+#define SM_X_DIR_INVERT true      // invert stepper direction if going in opposite direction
 #define SM_Y_DIR_INVERT true
-#define SM_X_STEP_PIN 16    // stepper motor pins
+#define SM_X_STEP_PIN 16          // stepper motor pins
 #define SM_X_DIR_PIN  17
 #define SM_Y_STEP_PIN 14
 #define SM_Y_DIR_PIN  15
-#define LS_X_MIN_PIN 3      // limit switch interrupt pins (blue)
-#define LS_X_MAX_PIN 2      // (green)
-#define LS_Y_MIN_PIN 4      // (red)
-#define LS_Y_MAX_PIN 5      // (yellow)
-#define STEP_NUM 0.5        // half-stepping
-#define GANTRY_SIZE_X 4934  // 4934: 1.55m length, 2cm pulley radius, 1.8deg step size, 1/2 step => 4934
+#define LS_X_MIN_PIN 3            // limit switch interrupt pins (blue)
+#define LS_X_MAX_PIN 2            // (green)
+#define LS_Y_MIN_PIN 4            // (red)
+#define LS_Y_MAX_PIN 5            // (yellow)
+#define STEP_NUM 0.5              // half-stepping
+#define GANTRY_SIZE_X 4934        // 4934: 1.55m length, 2cm pulley radius, 1.8deg step size, 1/2 step. See spreadsheet for calculation
 #define GANTRY_SIZE_Y 4934
 #define GANTRY_BOUND_OFFSET 955   // 25 cm
-#define X_BODY_LENGTH 573   // 18 cm
-#define Y_BODY_LENGTH 637   // 20 cm
+#define X_BODY_LENGTH 573         // 18 cm
+#define Y_BODY_LENGTH 637         // 20 cm
 #define CALIBRATION_OFFSET_X 159  // 5 cm
 #define CALIBRATION_OFFSET_Y 80   // 2.5 cm
 
@@ -46,12 +48,15 @@ bool new_cmd = false;
 uint16_t local_check_sum = 0;
 uint8_t mode = 0;
 bool calibrate_axis = false;
+unsigned long prev_lim_check = 0;
+uint32_t prev_x = 0;
+uint32_t prev_y = 0;
 
 // Interrupt flags for limit switches
-volatile bool sw_x_min_flag = false;
-volatile bool sw_x_max_flag = false;
-volatile bool sw_y_min_flag = false;
-volatile bool sw_y_max_flag = false;
+// volatile bool sw_x_min_flag = false;
+// volatile bool sw_x_max_flag = false;
+// volatile bool sw_y_min_flag = false;
+// volatile bool sw_y_max_flag = false;
 
 // Initialize arbitrary limit switch boundaries to be changed after calibration
 int32_t y_max = 99999999;
@@ -170,32 +175,58 @@ void calibrateAxis(char axis) {
 }
 
 // Command the steppers to move to an absolute position if given an XY input
-void moveSteppersTo(int32_t dX, int32_t dY) {
-  // Check if the positions are out of bounds
-  if (dY > y_max)
-    dY = y_max;
-  else if (dY < y_min)
-    dY = y_min;
+void moveSteppersTo(int32_t x, int32_t y) {
+  long newAccel;
+  int32_t dX, dY;
 
-  if (dX > x_max)
-    dX = x_max;
-  else if (dX < x_min)
-    dX = x_min;
+  // Check if the y position is out of bounds
+  if (y > y_max)
+    y = y_max;
+  else if (y < y_min)
+    y = y_min;
+
+  // Check if the x position is out of bounds
+  if (x > x_max)
+    x = x_max;
+  else if (x < x_min)
+    x = x_min;
+
+  // // Find change in position
+  // dX = x - prev_x;
+  // dY = y - prev_y;
+
+  // // Set the acceleration based on positional change
+  // if (dX > dY)
+  //   newAccel = KP_ACCEL * dX;
+  // else
+  //   newAccel = KP_ACCEL * dY;
+
+  // // Don't exceed max acceleration
+  // if (newAccel > MAX_ACCEL)
+  //   newAccel = MAX_ACCEL;
     
-  int32_t dA = dX + dY;
-  int32_t dB = dX - dY;
+  // // Set new acceleration based on positional change
+  // stepper1.setAcceleration(newAccel);
+  // stepper2.setAcceleration(newAccel);
+
+  // Equations of motion for coreXY design
+  int32_t A = x + y;
+  int32_t B = x - y;
   
-  stepper1.moveTo(dA);
-  stepper2.moveTo(dB);
+  stepper1.moveTo(A);
+  stepper2.moveTo(B);
+
+  // prev_x = x;
+  // prev_y = y;
 }
 
 // Command the steppers to move to a relative position if given an XY input
-void moveSteppers(int32_t dX, int32_t dY) {
-  int32_t dA = dX + dY;
-  int32_t dB = dX - dY;
+void moveSteppers(int32_t X, int32_t Y) {
+  int32_t A = X + Y;
+  int32_t B = X - Y;
 
-  stepper1.move(dA);
-  stepper2.move(dB);
+  stepper1.move(A);
+  stepper2.move(B);
 }
 
 // Verify the incoming serial packet is a legit command and set flag if true
@@ -391,8 +422,12 @@ void loop() {
     executeNewCmd();
   }
 
-  checkLimitSwitches();
-
+  // Check limit switch at reduced frequency
+  if (millis() - prev_lim_check > DELAY_LIM_SW_CHECK) {
+    checkLimitSwitches();  
+    prev_lim_check = millis();
+  }
+  
   // Call these functions as often as possible
   stepper1.run();
   stepper2.run();
