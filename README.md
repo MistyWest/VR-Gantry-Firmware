@@ -8,6 +8,7 @@ Stepper motor control for gantry head positioning based on HTC Vive HMD coordina
 * Dependencies: AccelStepper Library 1.51
 * IDE: Arduino
 
-### Contributors ###
+### Contact ###
 
 * Repo owner: Justin Lam
+* Contributors: Div
