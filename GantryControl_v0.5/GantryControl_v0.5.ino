@@ -3,6 +3,7 @@
    Purpose: Control stepper motors in a CoreXY configuration through a Visual Studios C++ program using serial communication.
 
    Comments:
+   - 2016-12-06: Removed limit switch check in main loop because it wasn't really working
    - 2016-09-06: Changed board from Arduino Redboard to Teensy 3.2
    - 2016-08-29: Max steps/pulses per second (pps) of a given stepper motor is limited by the phase winding inductance and input voltage.
       - Using the current 57BHGY420-2 NEMA 23 motors with 5.5mH (+/- 20%) inductance per coil, the max is 1300 pps.
@@ -423,10 +424,10 @@ void loop() {
   }
 
   // Check limit switch at reduced frequency
-  if (millis() - prev_lim_check > DELAY_LIM_SW_CHECK) {
-    checkLimitSwitches();  
-    prev_lim_check = millis();
-  }
+  // if (millis() - prev_lim_check > DELAY_LIM_SW_CHECK) {
+  //   checkLimitSwitches();  
+  //   prev_lim_check = millis();
+  // }
   
   // Call these functions as often as possible
   stepper1.run();
