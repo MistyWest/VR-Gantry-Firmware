@@ -41,16 +41,22 @@
 #define CALIBRATION_OFFSET_X 159  // 5 cm
 #define CALIBRATION_OFFSET_Y 80   // 2.5 cm
 
-// Initialize variables
-uint8_t rcv_buff[12];
-uint8_t i = 0;
+// Initialize vars for serial packet
+uint8_t rcv_buff[12];           // buffer array
+uint16_t local_check_sum = 0;   // used for serial packet check sum
+uint8_t i = 0;                  // used in parseSerialPacket
+uint8_t mode = 0;               // used in parseSerialPacket
+
+// Initialize misc vars
 bool new_cmd = false;
-uint16_t local_check_sum = 0;
-uint8_t mode = 0;
 bool calibrate_axis = false;
-unsigned long prev_lim_check = 0;
-uint32_t prev_x = 0;
-uint32_t prev_y = 0;
+bool calibrate_x = false;
+bool calibrate_y = false;
+bool constant_speed = false;
+
+// unsigned long prev_lim_check = 0;
+// uint32_t prev_x = 0;
+// uint32_t prev_y = 0;
 
 // Initialize arbitrary limit switch boundaries to be changed after calibration
 int32_t y_max = 99999999;
@@ -105,67 +111,116 @@ void UnStuffData(const uint8_t *ptr, unsigned long length, uint8_t *dst) {
 }
 
 // Calibration procedure to properly zero the gantry
-void calibrateAxis(char axis) {
-  bool switch_pressed = false;
+bool calibrateAxis(char axis) {
+  static uint8_t calib_mode = 0;
+  static bool calibration_complete_x = false;
+  static bool calibration_complete_y = false;
 
-  // Run at a slower speed so it doesn't smash into the limit switches
-  stepper1.setSpeed(CALIBRATION_SPEED);
-  stepper2.setSpeed(CALIBRATION_SPEED);
+  bool run_constant_speed = false;
 
-  int32_t dist = 16;
+  switch (calib_mode) {
+    // Initialize local variables
+    case 0:   
+        bool switch_pressed = false;
 
-  // Keep moving in the specified direction until the switch is hit
-  while(!switch_pressed) {
-    switch (axis) {
-    case 'x':
-      moveSteppers(dist,0);
-      switch_pressed = XMaxSwitch.CheckSwitchPress();
-      break;
+        // Run at a slower speed so it doesn't smash into the limit switches
+        stepper1.setSpeed(CALIBRATION_SPEED);
+        stepper2.setSpeed(CALIBRATION_SPEED);
 
-    case 'y':
-      moveSteppers(0,dist);
-      switch_pressed = YMaxSwitch.CheckSwitchPress();
-      break;
-    }
+        int32_t dist = 16;  // set distance to travel for each step
 
-    // Run at constant speed w/o accel/decel
-    stepper1.runSpeed();
-    stepper2.runSpeed();
+        calib_mode++;
+        break;  // {end case 0}
+
+    // Keep moving in the specified direction until the switch is hit
+    case 1:   
+      if(!switch_pressed) {
+        switch (axis) {
+        case 'x':
+          moveSteppers(dist,0);
+          switch_pressed = XMaxSwitch.CheckSwitchPress();
+          break;
+
+        case 'y':
+          moveSteppers(0,dist);
+          switch_pressed = YMaxSwitch.CheckSwitchPress();
+          break;
+        }
+        run_constant_speed = true;
+      }
+      else {
+        calib_mode++;
+      }
+
+      break;  // {end case 1}
+    
+    // Move the gantry to the center of the axis to set the correct zero position
+    case 2:   
+      switch (axis) {
+        case 'x':
+          calibration_complete_x = true;
+          moveSteppers(-(GANTRY_SIZE_X - X_BODY_LENGTH)/2 - CALIBRATION_OFFSET_X, 0);
+          break;
+
+        case 'y':
+          calibration_complete_y = true;
+          moveSteppers(0, -(GANTRY_SIZE_Y - Y_BODY_LENGTH)/2 - CALIBRATION_OFFSET_Y);
+          break;
+      }
+
+      calib_mode++;
+      break;  // {end case 2}
+
+    // Set the new axis limits
+    case 3:  
+      // Set the current position as the new zero
+      stepper1.setCurrentPosition(0);
+      stepper2.setCurrentPosition(0);
+
+      // Set the software axis limits
+      switch (axis) {
+        case 'x':
+          x_max = GANTRY_SIZE_X / 2 - GANTRY_BOUND_OFFSET;
+          x_min = - x_max;
+          break;
+
+        case 'y':
+          y_max = GANTRY_SIZE_Y / 2 - GANTRY_BOUND_OFFSET;
+          y_min = - y_max;
+          break;
+      } 
+
+      calib_mode++;
+      break;  // {end case 3}
+    
+    // Calibrate the next axis
+    case 4:
+      // Check if calibration is complete for both axes 
+      if(calibration_complete_x && calibration_complete_y) {
+        calibrate_y = false;
+        calibrate_x = false;
+
+        // Reset these in case calibration needs to be completed again
+        calibration_complete_y = false;
+        calibration_complete_x = false;
+      }
+      // Otherwise initialize calibration of the other axis depending on which was called first (for polling the motors from the main loop)
+      else {
+        if(calibrate_y && !calibrate_x) {
+          calibrate_y = false;
+          calibrate_x = true;
+        }
+        else if(calibrate_x && !calibrate_y) {
+          calibrate_y = true;
+          calibrate_x = false;
+        }
+      }
+      
+      calib_mode = 0;
+      break;  // {end case 4}
   }
 
-  // Move the gantry to the center of the axis to set the correct zero position
-  switch (axis) {
-    case 'x':
-      moveSteppers(-(GANTRY_SIZE_X - X_BODY_LENGTH)/2 - CALIBRATION_OFFSET_X, 0);
-      break;
-
-    case 'y':
-      moveSteppers(0, -(GANTRY_SIZE_Y - Y_BODY_LENGTH)/2 - CALIBRATION_OFFSET_Y);
-      break;
-  }
-
-  // Keep running the steppers until it's at the position
-  while(stepper1.distanceToGo() != 0 && stepper2.distanceToGo() != 0) {
-    stepper1.run();
-    stepper2.run();
-  }
-
-  // Set the current position as the new zero
-  stepper1.setCurrentPosition(0);
-  stepper2.setCurrentPosition(0);
-
-  // Set the software axis limits
-  switch (axis) {
-    case 'x':
-      x_max = GANTRY_SIZE_X / 2 - GANTRY_BOUND_OFFSET;
-      x_min = - x_max;
-      break;
-
-    case 'y':
-      y_max = GANTRY_SIZE_Y / 2 - GANTRY_BOUND_OFFSET;
-      y_min = - y_max;
-      break;
-  }  
+  return run_constant_speed;
 }
 
 // Command the steppers to move to an absolute position if given an XY input
@@ -204,7 +259,7 @@ void moveSteppers(int32_t X, int32_t Y) {
 
 // Verify the incoming serial packet is a legit command and set flag if true
 void parseSerialPacket() {
-  digitalWrite(13, HIGH);
+  // digitalWrite(13, HIGH);
   while (Serial.available() > 0) {
     switch (mode) {
       case 0:
@@ -227,17 +282,17 @@ void parseSerialPacket() {
         break;
     }
   }
-  digitalWrite(13, LOW);
+  // digitalWrite(13, LOW);
 }
 
 // Check if there's a new command available and execute on it if true
 void executeNewCmd() {
-  if (new_cmd) {
     // Run the calibration procedure if the command matches the code
     if (cmd_rcv.pos_x == CALIBRATION_CODE && cmd_rcv.pos_y == CALIBRATION_CODE) {
-      calibrateAxis('y');
-      calibrateAxis('x');
-      digitalWrite(13, HIGH); // turn onboard led on to signify calibration complete
+      calibrate_y = true;
+      // calibrateAxis('y');
+      // calibrateAxis('x');
+      // digitalWrite(13, HIGH); // turn onboard led on to signify calibration complete
     }
     else if (cmd_rcv.pos_x == STOP_CODE && cmd_rcv.pos_y == STOP_CODE) {
       stopMotors();
@@ -246,8 +301,6 @@ void executeNewCmd() {
     else { 
       moveSteppersTo(cmd_rcv.pos_x, cmd_rcv.pos_y);
     }
-    new_cmd = false;
-  }
 }
 
 // Check the status of the limit switches to see if one has been triggered
@@ -381,12 +434,24 @@ void setup() {
 
   // Initialize serial communication
   Serial.begin(BAUD_RATE);
+
 }
 
 void loop() {  
   if (Serial.available() > 0) {
-    parseSerialPacket();
-    executeNewCmd();
+    parseSerialPacket();    // read serial packet into buffer
+
+    if (new_cmd) {
+      executeNewCmd();      // run calibration, stop motors, or run the motors
+      new_cmd = false;
+    }
+
+    if (calibrate_y) {
+      constant_speed = calibrateAxis('y');
+    }
+    else if (calibrate_x) {
+      constant_speed = calibrateAxis('x');
+    }
   }
 
   // Check limit switch at reduced frequency
@@ -396,6 +461,12 @@ void loop() {
   // }
   
   // Call these functions as often as possible
-  stepper1.run();
-  stepper2.run();
+  if (constant_speed) {   // run constant speed during calibration
+    stepper1.runSpeed();
+    stepper2.runSpeed();
+  }
+  else {
+    stepper1.run();
+    stepper2.run();
+  }
 }
