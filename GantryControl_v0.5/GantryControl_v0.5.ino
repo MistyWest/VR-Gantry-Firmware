@@ -17,7 +17,6 @@
 
 #define MAX_SPEED 3000            // Max skip-less speed w/ Teensy 3.2 @ 96MHz clock (determined by max processing speed and phase inductance of motors)
 #define MAX_ACCEL 3000       
-#define KP_ACCEL  37.5          // proportional control constant for distance/accel. Max acceleration occurs when change is <= 30cm
 #define DELAY_LIM_SW_CHECK 10     // only check the switches every X milliseconds
 #define CALIBRATION_SPEED 10      // nice and slow speed to run the calibration procedure
 #define CALIBRATION_CODE 0xF1ACA  // this needs to match the c++ code
@@ -52,12 +51,6 @@ bool calibrate_axis = false;
 unsigned long prev_lim_check = 0;
 uint32_t prev_x = 0;
 uint32_t prev_y = 0;
-
-// Interrupt flags for limit switches
-// volatile bool sw_x_min_flag = false;
-// volatile bool sw_x_max_flag = false;
-// volatile bool sw_y_min_flag = false;
-// volatile bool sw_y_max_flag = false;
 
 // Initialize arbitrary limit switch boundaries to be changed after calibration
 int32_t y_max = 99999999;
@@ -192,33 +185,12 @@ void moveSteppersTo(int32_t x, int32_t y) {
   else if (x < x_min)
     x = x_min;
 
-  // // Find change in position
-  // dX = x - prev_x;
-  // dY = y - prev_y;
-
-  // // Set the acceleration based on positional change
-  // if (dX > dY)
-  //   newAccel = KP_ACCEL * dX;
-  // else
-  //   newAccel = KP_ACCEL * dY;
-
-  // // Don't exceed max acceleration
-  // if (newAccel > MAX_ACCEL)
-  //   newAccel = MAX_ACCEL;
-    
-  // // Set new acceleration based on positional change
-  // stepper1.setAcceleration(newAccel);
-  // stepper2.setAcceleration(newAccel);
-
   // Equations of motion for coreXY design
   int32_t A = x + y;
   int32_t B = x - y;
   
   stepper1.moveTo(A);
   stepper2.moveTo(B);
-
-  // prev_x = x;
-  // prev_y = y;
 }
 
 // Command the steppers to move to a relative position if given an XY input
@@ -391,12 +363,6 @@ void setup() {
   pinMode(13, OUTPUT);  // onboard LED pin
 
   digitalWrite(13, LOW);  // turn LED on later after calibration
-
-  // Enable interrupts using arduino fcns
-//  attachInterrupt(LS_X_MIN_PIN, isr_sw_x_min, FALLING);
-//  attachInterrupt(LS_X_MAX_PIN, isr_sw_x_max, FALLING);
-//  attachInterrupt(LS_Y_MIN_PIN, isr_sw_y_min, FALLING);
-//  attachInterrupt(LS_Y_MAX_PIN, isr_sw_y_max, FALLING);
 
   // Initialize stepper motors
   stepper1.setMaxSpeed(MAX_SPEED / STEP_NUM);
