@@ -115,19 +115,21 @@ bool calibrateAxis(char axis) {
   static uint8_t calib_mode = 0;
   static bool calibration_complete_x = false;
   static bool calibration_complete_y = false;
+  static bool switch_pressed;
+  static int32_t dist;
 
   bool run_constant_speed = false;
 
   switch (calib_mode) {
     // Initialize local variables
     case 0:   
-        bool switch_pressed = false;
+        switch_pressed = false;
 
         // Run at a slower speed so it doesn't smash into the limit switches
         stepper1.setSpeed(CALIBRATION_SPEED);
         stepper2.setSpeed(CALIBRATION_SPEED);
 
-        int32_t dist = 16;  // set distance to travel for each step
+        dist = 16;  // set distance to travel for each step
 
         calib_mode++;
         break;  // {end case 0}
@@ -445,13 +447,14 @@ void loop() {
       executeNewCmd();      // run calibration, stop motors, or run the motors
       new_cmd = false;
     }
+  }
 
-    if (calibrate_y) {
-      constant_speed = calibrateAxis('y');
-    }
-    else if (calibrate_x) {
-      constant_speed = calibrateAxis('x');
-    }
+  
+  if (calibrate_y) {
+    constant_speed = calibrateAxis('y');
+  }
+  else if (calibrate_x) {
+    constant_speed = calibrateAxis('x');
   }
 
   // Check limit switch at reduced frequency
