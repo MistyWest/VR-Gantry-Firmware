@@ -1,0 +1,20 @@
+diff a/GantryControl_v0.4/GantryControl_v0.4.ino b/GantryControl_v0.4/GantryControl_v0.4.ino	(rejected hunks)
+@@ -25,12 +25,13 @@
+ #define Y_MIN_PIN 2
+ #define Y_MAX_PIN 3
+ #define STEP_NUM 0.5  // half-stepping
+-#define GANTRY_SIZE_X 4934  // 1.55m length, 2cm pulley radius, 1.8deg step size, 1/2 step = 4934
+-#define GANTRY_SIZE_Y 4934 
++#define GANTRY_SIZE_X 4934  // 4934: 1.55m length, 2cm pulley radius, 1.8deg step size, 1/2 step = 4934
++#define GANTRY_SIZE_Y 4920
+ #define DEBOUNCE_DELAY 5
+-#define GANTRY_BOUND_OFFSET 25
+-#define X_BODY_LENGTH 541
+-#define Y_BODY_LENGTH 541 
++#define GANTRY_BOUND_OFFSET 15
++#define X_BODY_LENGTH 433
++#define Y_BODY_LENGTH 643 
++#define CALIBRATION_CODE 0xF1ACA
+ 
+ // Initialize variables
+ uint8_t rcv_buff[12];
