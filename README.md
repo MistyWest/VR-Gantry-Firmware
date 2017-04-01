@@ -19,4 +19,5 @@ Stepper motor control for gantry head positioning based on HTC Vive HMD coordina
 * Repo owner: Justin / Mistywest
 * Contributors: Div
 * [Mistywest](https://mistywest.com/)
+<br><br>
 ![](https://mistywest.com/wp-content/uploads/2015/11/logo_sticky.png)
